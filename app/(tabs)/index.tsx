@@ -1,98 +1,199 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Text, StyleSheet, View, TouchableOpacity, ScrollView, StatusBar, FlatList, Alert, TextInput } from "react-native";
+import { Link } from "expo-router"
+import useAppTheme, { ColorScheme } from "@/hooks/appTheme";
+import { api } from "@/convex/_generated/api"
+import { useQuery, useMutation } from "convex/react";
+import { getTodos, toggleToDo } from "@/convex/todos";
+import { createHomeStyles } from "@/assets/images/styles/home.style";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Header from "@/components/Header";
+import TodoInput from "@/components/TodoInput";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import { Doc, Id } from "@/convex/_generated/dataModel";
+import { Ionicons } from "@expo/vector-icons";
+import { use, useState } from "react";
+import EmptyState from "@/components/EmptyState";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type Todo = Doc<'todos'>;
 
-export default function HomeScreen() {
+export default function Index() {
+
+  const getTodos = useQuery(api.todos.getTodos);
+  console.log(getTodos);
+  const toggleTodo = useMutation(api.todos.toggleToDo);
+  const addToDo = useMutation(api.todos.addTodo);
+  const deleteToDo = useMutation(api.todos.deleteToDo);
+  const updateToDo = useMutation(api.todos.updateToDo);
+  const clearAll = useMutation(api.todos.clearAllToDo);
+  const [editingId, setEditingId] = useState<Id<"todos"> | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+
+
+  const { colors, toggleDarkMode } = useAppTheme();
+  const styles = createHomeStyles(colors);
+  const isLoading = getTodos === undefined;
+ 
+  // functions 
+  const handleToggleTodo = async (todoId: Id<"todos">) => {
+    try {
+      await toggleTodo({ id: todoId });
+    } catch (error) {
+      console.log("Error toggling todo");
+      Alert.alert("Error", "Failed to toggle todo. Please try again.");
+    }
+  };
+  const handleDeleteTodo = async (todoId: Id<"todos">) => {
+    Alert.alert(
+      "Delete Todo",
+      "Are you sure you want to delete this todo?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteToDo({ id: todoId });
+            } catch (error) {
+              console.log("Error deleting todo:", error);
+              Alert.alert("Error", "Failed to delete todo. Please try again.");
+            }
+          }
+        }]);
+  };
+
+  const handleEditTodo = (todo: Todo) => {
+    setEditingId(todo._id);
+    setEditingText(todo.text);
+
+  };
+
+
+  const handleSaveEdit = async () => {
+
+    if (editingId) {
+      try {
+        await updateToDo({ id: editingId, text: editingText });
+        setEditingId(null);
+      } catch (error) {
+        console.log("Error updating todo:", error);
+        Alert.alert("Error", "Failed to update todo. Please try again.");
+
+      }
+    }
+  }
+
+
+  const handleCancelEdit = () => {
+
+    setEditingId(null);
+    setEditingText("");
+  }
+
+  const renderTodoItem = ({ item }: { item: Todo }) => {
+    const isEditing = editingId === item._id;
+    return (
+      <View style={styles.todoItemWrapper}>
+        <LinearGradient style={styles.todoItem} colors={colors.gradients.surface}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <TouchableOpacity style={styles.checkbox} activeOpacity={0.7} onPress={() => handleToggleTodo(item._id)}>
+            <LinearGradient colors={item.isCompleted ? colors.gradients.success : colors.gradients.muted} style={[styles.checkboxInner, { borderColor: item.isCompleted ? "transparent" : colors.border }]} >
+              {item.isCompleted && <Ionicons name="checkmark" size={18} color="white" />}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {
+            isEditing ? (
+              <View style={styles.editContainer}>
+                <TextInput
+                  style={styles.editInput}
+                  value={editingText}
+                  onChangeText={setEditingText}
+                  autoFocus
+                  multiline
+                  placeholder="Edit todo text"
+                  placeholderTextColor={colors.textMuted}
+
+                />
+                <View style={styles.editButtons}>
+
+                  <TouchableOpacity onPress={handleSaveEdit} activeOpacity={0.8}>
+                    <LinearGradient colors={colors.gradients.success} style={styles.actionButton}>
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleCancelEdit} activeOpacity={0.8}>
+                    <LinearGradient colors={colors.gradients.danger} style={styles.actionButton}>
+                      <Ionicons name="close" size={16} color="#fff" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+            ) : (
+              <View style={styles.todoTextContainer}>
+                <Text style={[styles.todoText, item.isCompleted && { textDecorationLine: "line-through", color: colors.textMuted, opacity: 0.6 }]}>{item.text}
+
+                </Text>
+                {/* edit text and delete todo buttons  */}
+                <View style={styles.todoActions}>
+                  <TouchableOpacity onPress={() => handleEditTodo(item)} activeOpacity={0.8}>
+                    <LinearGradient colors={colors.gradients.warning} style={styles.actionButton}>
+                      <Ionicons name="pencil" size={14} color="#fff" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeleteTodo(item._id)} activeOpacity={0.8}>
+                    <LinearGradient colors={colors.gradients.danger} style={styles.actionButton}>
+                      <Ionicons name="trash" size={14} color="#fff" />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )
+          }
+
+        </LinearGradient>
+
+      </View>
+    )
+  }
+  /// we will use array syntax for styles inside text component //
+  // it merges the properties and the last property wins
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <LinearGradient colors={colors.gradients.background} style={styles.container}>
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor="transparent"
+        translucent={true} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
-  );
+      <SafeAreaView
+        style={styles.safeArea}
+      >
+        <Header />
+        <TodoInput />
+       
+
+        <FlatList
+          data={getTodos}
+          keyExtractor={(item) => item._id}
+          renderItem={renderTodoItem}
+          ListEmptyComponent={<EmptyState />}
+          showsVerticalScrollIndicator={false}
+        />
+
+
+
+      </SafeAreaView>
+
+
+    </LinearGradient>
+  )
 }
 
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
+
+
